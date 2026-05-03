@@ -15,6 +15,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  color-scheme: dark;
   --bg:        #0b0d0f;
   --surface:   #111417;
   --surface2:  #181c20;
@@ -37,6 +38,42 @@
   --display: 'Syne', sans-serif;
   --radius: 4px;
   --scan-speed: 8s;
+  --heading:      #ffffff;
+  --on-accent:    #000000;
+  --logo-icon-fg: #000000;
+  --scanline-stripe: rgba(0,0,0,0.04);
+  --chevron-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6470'/%3E%3C/svg%3E");
+  --spinner-border: rgba(0,0,0,0.2);
+  --spinner-tip:    #000000;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg:        #e7ecf2;
+  --surface:   #ffffff;
+  --surface2:  #f0f4f9;
+  --border:    #d9e0e9;
+  --border2:   #c8d2df;
+  --text:      #141b24;
+  --text-dim:  #5c6778;
+  --text-mid:  #3d4d61;
+  --acid:      #00b889;
+  --acid-dim:  rgba(0,184,137,0.14);
+  --acid-glow: rgba(0,184,137,0.28);
+  --warn:      #c77800;
+  --warn-dim:  rgba(199,120,0,0.14);
+  --fail:      #c73855;
+  --fail-dim:  rgba(199,56,85,0.12);
+  --pass:      #00b889;
+  --info:      #1f6fce;
+  --info-dim:  rgba(31,111,206,0.12);
+  --heading:      #0b1018;
+  --on-accent:    #04271d;
+  --logo-icon-fg: #04271d;
+  --scanline-stripe: rgba(0,0,0,0.028);
+  --chevron-svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235c6778'/%3E%3C/svg%3E");
+  --spinner-border: rgba(4,39,29,0.18);
+  --spinner-tip:    #04271d;
 }
 
 html { font-size: 14px; height: 100%; }
@@ -53,7 +90,7 @@ body {
 body::before {
   content: '';
   position: fixed; inset: 0;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline-stripe) 2px, var(--scanline-stripe) 4px);
   pointer-events: none;
   z-index: 1000;
 }
@@ -96,7 +133,7 @@ body::before {
   font-weight: 800;
   font-size: 16px;
   letter-spacing: -0.5px;
-  color: #fff;
+  color: var(--heading);
 }
 .logo-icon {
   width: 28px; height: 28px;
@@ -104,13 +141,34 @@ body::before {
   border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px;
-  color: #000;
+  color: var(--logo-icon-fg);
   font-weight: 700;
   flex-shrink: 0;
 }
 .logo-sub { color: var(--text-dim); font-family: var(--mono); font-size: 11px; font-weight: 400; }
 
 .header-right { display: flex; align-items: center; gap: 8px; }
+
+.theme-toggle {
+  width: 36px;
+  height: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text-mid);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.theme-toggle:hover {
+  border-color: var(--acid);
+  color: var(--acid);
+  background: var(--acid-dim);
+}
 .pill {
   display: flex; align-items: center; gap: 6px;
   padding: 4px 10px;
@@ -252,7 +310,7 @@ body::before {
 .field-input:focus { border-color: var(--acid); }
 .field-input::placeholder { color: var(--text-dim); }
 
-select.field-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6470'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+select.field-input { cursor: pointer; appearance: none; background-image: var(--chevron-svg); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
 
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -279,7 +337,7 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
   background: var(--acid);
   border: none;
   border-radius: var(--radius);
-  color: #000;
+  color: var(--on-accent);
   font-family: var(--display);
   font-size: 13px;
   font-weight: 700;
@@ -295,8 +353,8 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
 .btn-run:disabled { background: var(--surface2); color: var(--text-dim); cursor: not-allowed; box-shadow: none; }
 .btn-run .spinner {
   width: 14px; height: 14px;
-  border: 2px solid rgba(0,0,0,0.2);
-  border-top-color: #000;
+  border: 2px solid var(--spinner-border);
+  border-top-color: var(--spinner-tip);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   display: none;
@@ -356,7 +414,7 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
   align-items: center;
   justify-content: center;
 }
-.endpoint-run:hover { border-color: var(--acid); background: var(--acid-dim); color: #fff; }
+.endpoint-run:hover { border-color: var(--acid); background: var(--acid-dim); color: var(--heading); }
 .endpoint-run:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .method-badge {
@@ -484,7 +542,7 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
 .result-title {
   display: flex; align-items: flex-start; gap: 12px;
 }
-.result-title-text h2 { font-family: var(--display); font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.result-title-text h2 { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--heading); margin-bottom: 4px; }
 .result-title-text .url-display { font-size: 11px; color: var(--text-dim); word-break: break-all; }
 .result-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .meta-chip {
@@ -869,7 +927,7 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
    OVERVIEW STATE (all results)
 ═══════════════════════════════════════════════════════════════ */
 .overview { padding: 20px; flex: 1; min-height: 0; overflow-y: auto; }
-.overview-title { font-family: var(--display); font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.overview-title { font-family: var(--display); font-size: 20px; font-weight: 800; color: var(--heading); margin-bottom: 4px; }
 .overview-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 20px; }
 
 .result-cards { display: flex; flex-direction: column; gap: 8px; }
@@ -948,6 +1006,7 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
       </div>
     </div>
     <div class="header-right">
+      <button type="button" class="theme-toggle" id="theme-toggle" title="Switch theme" aria-label="Switch theme">☀</button>
       <div class="pill" id="status-pill">
         <div class="pill-dot" id="status-dot"></div>
         <span id="status-text">idle</span>
@@ -1123,6 +1182,44 @@ select.field-input { cursor: pointer; appearance: none; background-image: url("d
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME (light / dark)
+═══════════════════════════════════════════════════════════════════════════ */
+const THEME_STORAGE_KEY = 'api-scanner-theme';
+
+function syncThemeToggle(theme) {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  if (theme === 'light') {
+    btn.textContent = '☾';
+    btn.title = 'Switch to dark mode';
+    btn.setAttribute('aria-label', 'Switch to dark mode');
+  } else {
+    btn.textContent = '☀';
+    btn.title = 'Switch to light mode';
+    btn.setAttribute('aria-label', 'Switch to light mode');
+  }
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  const theme = saved === 'light' || saved === 'dark' ? saved : (prefersLight ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', theme);
+  syncThemeToggle(theme);
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  syncThemeToggle(next);
+}
+
+document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+initTheme();
+
 /* ═══════════════════════════════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════════════════════════════ */
