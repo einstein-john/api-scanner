@@ -1,0 +1,174 @@
+openapi: "3.0.0"
+info:
+  title: Sample E-Commerce API
+  version: "1.0.0"
+  description: Example API for testing the scanner
+
+servers:
+  - url: https://jsonplaceholder.typicode.com
+    description: Mock server
+
+x-scanner:
+  baseUrl: https://jsonplaceholder.typicode.com
+  auth:
+    type: bearer
+    token: "YOUR_TOKEN_HERE"
+  timeout: 5000
+  stopOnFirstFail: false
+
+paths:
+  /posts:
+    get:
+      summary: Get all posts
+      operationId: listPosts
+      tags: [posts]
+      responses:
+        "200":
+          description: List of posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Post"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /posts/{id}:
+    get:
+      summary: Get a post by ID
+      operationId: getPost
+      tags: [posts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: A single post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /posts/{id}/comments:
+    get:
+      summary: Get comments for a post
+      operationId: getPostComments
+      tags: [comments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Comment"
+
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      operationId: getUser
+      tags: [users]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: A user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+components:
+  schemas:
+    Post:
+      type: object
+      required: [id, title, body, userId]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+          description: FK → User (no nested user object expected)
+        title:
+          type: string
+        body:
+          type: string
+
+    Comment:
+      type: object
+      required: [id, postId, name, email, body]
+      properties:
+        id:
+          type: integer
+        postId:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        body:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+            zipcode:
+              type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string

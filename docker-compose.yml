@@ -1,0 +1,8 @@
+services:
+  api-scanner:
+    build: .
+    ports:
+      - "${PORT:-3847}:3847"
+    environment:
+      NODE_ENV: production
+      PORT: "3847"

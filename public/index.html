@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>api-scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   TOKENS & RESET
+═══════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0b0d0f;
+  --surface:   #111417;
+  --surface2:  #181c20;
+  --border:    #1e2428;
+  --border2:   #262c32;
+  --text:      #c8d0d8;
+  --text-dim:  #5a6470;
+  --text-mid:  #8a959f;
+  --acid:      #00e5a0;
+  --acid-dim:  rgba(0,229,160,0.12);
+  --acid-glow: rgba(0,229,160,0.3);
+  --warn:      #f5a623;
+  --warn-dim:  rgba(245,166,35,0.12);
+  --fail:      #e84b6a;
+  --fail-dim:  rgba(232,75,106,0.12);
+  --pass:      #00e5a0;
+  --info:      #4a9eff;
+  --info-dim:  rgba(74,158,255,0.12);
+  --mono: 'IBM Plex Mono', monospace;
+  --display: 'Syne', sans-serif;
+  --radius: 4px;
+  --scan-speed: 8s;
+}
+
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* scanline overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCROLLBAR
+═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ═══════════════════════════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════════════════════════ */
+.app { display: grid; grid-template-columns: 380px 1fr; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+/* ── Header ── */
+.header {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 100;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+.logo-icon {
+  width: 28px; height: 28px;
+  background: var(--acid);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  color: #000;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.logo-sub { color: var(--text-dim); font-family: var(--mono); font-size: 11px; font-weight: 400; }
+
+.header-right { display: flex; align-items: center; gap: 8px; }
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); }
+.pill-dot.active { background: var(--acid); box-shadow: 0 0 6px var(--acid-glow); animation: pulse 2s infinite; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ── Sidebar ── */
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Main ── */
+.main {
+  overflow-y: auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SIDEBAR SECTIONS
+═══════════════════════════════════════════════════════════════ */
+.section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Drop zone */
+.dropzone {
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  background: var(--surface2);
+}
+.dropzone:hover, .dropzone.drag { border-color: var(--acid); background: var(--acid-dim); }
+.dropzone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dropzone-icon { font-size: 24px; margin-bottom: 8px; }
+.dropzone-text { font-size: 12px; color: var(--text-mid); line-height: 1.5; }
+.dropzone-text strong { color: var(--acid); }
+
+/* Spec name badge */
+.spec-badge {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--acid-dim);
+  border: 1px solid rgba(0,229,160,0.2);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-size: 11px;
+  margin-top: 10px;
+}
+.spec-badge-name { color: var(--acid); font-weight: 500; }
+.spec-badge-meta { color: var(--text-dim); }
+.spec-badge-clear {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim); font-size: 14px; padding: 0 4px;
+  line-height: 1;
+}
+.spec-badge-clear:hover { color: var(--fail); }
+
+/* YAML editor */
+.yaml-wrap { position: relative; }
+.yaml-editor {
+  width: 100%;
+  min-height: 140px;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 10px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.yaml-editor:focus { border-color: var(--acid); }
+.yaml-editor::placeholder { color: var(--text-dim); }
+
+/* Form fields */
+.field { margin-bottom: 10px; }
+.field-label { font-size: 10px; color: var(--text-dim); margin-bottom: 4px; display: block; letter-spacing: 0.05em; }
+.field-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.field-input:focus { border-color: var(--acid); }
+.field-input::placeholder { color: var(--text-dim); }
+
+select.field-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6470'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* Tag filter chips */
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tag-chip {
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  font-size: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tag-chip:hover { border-color: var(--text-mid); color: var(--text); }
+.tag-chip.active { border-color: var(--acid); background: var(--acid-dim); color: var(--acid); }
+
+/* Run button */
+.btn-run {
+  width: 100%;
+  padding: 11px;
+  background: var(--acid);
+  border: none;
+  border-radius: var(--radius);
+  color: #000;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.btn-run:hover { background: #00ffb3; box-shadow: 0 0 20px var(--acid-glow); }
+.btn-run:active { transform: scale(0.98); }
+.btn-run:disabled { background: var(--surface2); color: var(--text-dim); cursor: not-allowed; box-shadow: none; }
+.btn-run .spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(0,0,0,0.2);
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: none;
+}
+.btn-run.running .spinner { display: block; }
+.btn-run.running .run-label { display: none; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Export buttons */
+.export-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.btn-export {
+  padding: 7px 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text-mid);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  text-decoration: none;
+}
+.btn-export:hover { border-color: var(--acid); color: var(--acid); background: var(--acid-dim); }
+.btn-export:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-export-icon { font-size: 16px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ENDPOINT LIST
+═══════════════════════════════════════════════════════════════ */
+.endpoint-list { flex: 1; overflow-y: auto; }
+.endpoint-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+  min-width: 0;
+}
+.endpoint-item:hover { background: var(--surface2); }
+.endpoint-item.active { background: var(--acid-dim); border-left: 2px solid var(--acid); padding-left: 18px; }
+
+.endpoint-run {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  border-radius: 3px;
+  color: var(--acid);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.endpoint-run:hover { border-color: var(--acid); background: var(--acid-dim); color: #fff; }
+.endpoint-run:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.method-badge {
+  font-size: 9px; font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
+.method-GET    { background: rgba(74,158,255,0.15); color: #4a9eff; }
+.method-POST   { background: rgba(0,229,160,0.15); color: #00e5a0; }
+.method-PUT    { background: rgba(245,166,35,0.15); color: #f5a623; }
+.method-PATCH  { background: rgba(200,130,255,0.15); color: #c882ff; }
+.method-DELETE { background: rgba(232,75,106,0.15); color: #e84b6a; }
+
+.endpoint-path { font-size: 11px; color: var(--text-mid); truncate: ellipsis; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.endpoint-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-pass { background: var(--acid); }
+.dot-warn { background: var(--warn); }
+.dot-fail { background: var(--fail); }
+.dot-pending { background: var(--border2); }
+.dot-running { background: var(--acid); animation: pulse 0.5s infinite; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN CONTENT STATES
+═══════════════════════════════════════════════════════════════ */
+.empty-state {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px;
+  color: var(--text-dim);
+  padding: 40px;
+  text-align: center;
+}
+.empty-state-art {
+  font-size: 48px;
+  opacity: 0.3;
+  margin-bottom: 8px;
+}
+.empty-state h2 { font-family: var(--display); font-size: 18px; color: var(--text-mid); font-weight: 600; }
+.empty-state p { font-size: 12px; line-height: 1.6; max-width: 320px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   LIVE LOG
+═══════════════════════════════════════════════════════════════ */
+.live-log-wrap {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.live-log-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.live-log-body {
+  padding: 10px 20px;
+  min-height: 60px;
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 2;
+}
+.log-line { display: flex; align-items: center; gap: 10px; }
+.log-line .ts { color: var(--text-dim); flex-shrink: 0; font-size: 10px; }
+.log-line .lm { color: var(--text); }
+.log-line.log-pass .lm { color: var(--pass); }
+.log-line.log-fail .lm { color: var(--fail); }
+.log-line.log-warn .lm { color: var(--warn); }
+.log-line.log-info .lm { color: var(--info); }
+
+/* Progress bar */
+.progress-bar-wrap { height: 2px; background: var(--border); }
+.progress-bar { height: 100%; background: var(--acid); transition: width 0.3s; box-shadow: 0 0 8px var(--acid-glow); }
+
+/* ═══════════════════════════════════════════════════════════════
+   SUMMARY STRIP
+═══════════════════════════════════════════════════════════════ */
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+.summary-cell {
+  padding: 14px 20px;
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.summary-cell:last-child { border-right: none; }
+.summary-num {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+}
+.summary-num.green { color: var(--acid); }
+.summary-num.red   { color: var(--fail); }
+.summary-num.yellow { color: var(--warn); }
+.summary-num.white  { color: var(--text); }
+.summary-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESULT DETAIL
+═══════════════════════════════════════════════════════════════ */
+.result-detail { padding: 20px; animation: fadeIn 0.2s ease; flex: 1; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.result-title {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.result-title-text h2 { font-family: var(--display); font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.result-title-text .url-display { font-size: 11px; color: var(--text-dim); word-break: break-all; }
+.result-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.meta-chip {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text-mid);
+}
+.meta-chip.green { border-color: rgba(0,229,160,0.3); background: var(--acid-dim); color: var(--acid); }
+.meta-chip.red { border-color: rgba(232,75,106,0.3); background: var(--fail-dim); color: var(--fail); }
+.meta-chip.yellow { border-color: rgba(245,166,35,0.3); background: var(--warn-dim); color: var(--warn); }
+
+/* Test results grid */
+.tests-grid { display: flex; flex-direction: column; gap: 4px; margin-bottom: 20px; }
+.test-row {
+  display: grid;
+  grid-template-columns: 18px 140px 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: 11px;
+  border: 1px solid transparent;
+  transition: background 0.15s;
+}
+.test-row:hover { background: var(--surface2); }
+.test-row.pass { }
+.test-row.fail { background: var(--fail-dim); border-color: rgba(232,75,106,0.15); }
+.test-row.warn { background: var(--warn-dim); border-color: rgba(245,166,35,0.15); }
+.test-row.info { background: var(--info-dim); border-color: rgba(74,158,255,0.1); }
+.test-icon { font-size: 12px; line-height: 1.5; flex-shrink: 0; }
+.test-check { font-size: 10px; color: var(--text-dim); font-weight: 500; padding-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.test-message { color: var(--text); line-height: 1.5; }
+.test-row.pass .test-message { color: var(--text-mid); }
+.test-row.fail .test-message { color: var(--text); }
+
+.test-detail-note {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text-mid);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.test-detail-hint {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--info);
+  line-height: 1.4;
+}
+
+.override-panel {
+  margin-bottom: 20px;
+  padding: 14px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.override-panel-title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.override-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.override-panel-actions button {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+}
+.override-panel-actions button:hover { border-color: var(--acid); color: var(--acid); }
+.override-panel-actions button.primary {
+  background: var(--acid-dim);
+  border-color: rgba(0,229,160,0.35);
+  color: var(--acid);
+}
+.override-help {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.override-field-label {
+  font-size: 10px;
+  color: var(--text-mid);
+  margin-bottom: 4px;
+}
+.override-textarea {
+  width: 100%;
+  min-height: 100px;
+  margin-bottom: 12px;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+
+/* FK issues */
+.fk-section { margin-top: 16px; }
+.fk-section-title {
+  font-size: 10px; color: var(--text-dim);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.fk-card {
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+.fk-card:hover { border-color: var(--warn); }
+.fk-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fk-badge {
+  font-size: 9px; font-weight: 600; padding: 2px 7px;
+  border-radius: 3px; letter-spacing: 0.05em;
+}
+.fk-badge.warning { background: var(--warn-dim); color: var(--warn); }
+.fk-badge.error   { background: var(--fail-dim); color: var(--fail); }
+.fk-badge.info    { background: var(--info-dim); color: var(--info); }
+.fk-field { font-size: 11px; color: var(--acid); font-weight: 500; }
+.fk-message { font-size: 11px; color: var(--text-mid); line-height: 1.5; }
+.fk-suggestion { font-size: 10px; color: var(--text-dim); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); font-style: italic; }
+
+/* Error details */
+.error-list { margin-top: 4px; padding-left: 28px; }
+.error-list li { font-size: 10px; color: var(--text-dim); line-height: 1.8; list-style: none; position: relative; }
+.error-list li::before { content: '→'; position: absolute; left: -16px; color: var(--fail); }
+
+/* ═══════════════════════════════════════════════════════════════
+   OVERVIEW STATE (all results)
+═══════════════════════════════════════════════════════════════ */
+.overview { padding: 20px; flex: 1; }
+.overview-title { font-family: var(--display); font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+.overview-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 20px; }
+
+.result-cards { display: flex; flex-direction: column; gap: 8px; }
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.result-card:hover { border-color: var(--border2); background: var(--surface2); }
+.result-card.card-fail { border-left: 3px solid var(--fail); }
+.result-card.card-warn { border-left: 3px solid var(--warn); }
+.result-card.card-pass { border-left: 3px solid var(--acid); }
+.card-method { }
+.card-info h3 { font-size: 12px; color: var(--text); font-weight: 500; margin-bottom: 2px; }
+.card-info .card-url { font-size: 10px; color: var(--text-dim); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card-counts { display: flex; gap: 6px; flex-shrink: 0; }
+.count-chip { font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 500; }
+.count-pass { background: var(--acid-dim); color: var(--acid); }
+.count-fail { background: var(--fail-dim); color: var(--fail); }
+.count-warn { background: var(--warn-dim); color: var(--warn); }
+.card-timing { font-size: 10px; color: var(--text-dim); flex-shrink: 0; text-align: right; white-space: nowrap; }
+.card-status { font-size: 20px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   RUNNING ANIMATION
+═══════════════════════════════════════════════════════════════ */
+.scanning-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--acid); margin-left: 6px; animation: pulse 0.6s infinite; }
+
+/* ═══════════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════════ */
+.toast-wrap {
+  position: fixed; bottom: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 2000;
+}
+.toast {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text);
+  animation: toastIn 0.3s ease;
+  max-width: 280px;
+}
+.toast.error { border-color: rgba(232,75,106,0.4); color: var(--fail); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; } }
+
+/* Responsive: collapse sidebar on narrow */
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ══ HEADER ══════════════════════════════════════════════════════════ -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">⌬</div>
+      <div>
+        api-scanner
+        <div class="logo-sub">OpenAPI endpoint tester</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="pill" id="status-pill">
+        <div class="pill-dot" id="status-dot"></div>
+        <span id="status-text">idle</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══ SIDEBAR ═════════════════════════════════════════════════════════ -->
+  <aside class="sidebar">
+
+    <!-- Spec upload -->
+    <div class="section">
+      <div class="section-label">Spec</div>
+      <div class="dropzone" id="dropzone">
+        <input type="file" accept=".yml,.yaml,.json" id="file-input" />
+        <div class="dropzone-icon">📄</div>
+        <div class="dropzone-text">
+          Drop your <strong>OpenAPI YAML</strong> here<br />or click to browse
+        </div>
+      </div>
+      <div id="spec-badge" style="display:none" class="spec-badge">
+        <div>
+          <div class="spec-badge-name" id="spec-name">—</div>
+          <div class="spec-badge-meta" id="spec-meta">—</div>
+        </div>
+        <button class="spec-badge-clear" onclick="clearSpec()" title="Clear spec">×</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="field-label">— or paste YAML —</div>
+        <textarea class="yaml-editor" id="yaml-editor" placeholder="openapi: '3.0.0'&#10;info:&#10;  title: My API&#10;..."></textarea>
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div class="section">
+      <div class="section-label">Config</div>
+      <div class="field">
+        <label class="field-label">Base URL override</label>
+        <input class="field-input" id="base-url" placeholder="https://api.example.com" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Timeout (ms)</label>
+          <input class="field-input" id="timeout" type="number" value="5000" min="500" max="30000" />
+        </div>
+        <div class="field">
+          <label class="field-label">Response time threshold (ms)</label>
+          <input class="field-input" id="resp-threshold" type="number" value="2000" min="100" />
+        </div>
+      </div>
+      <div class="field-label" style="margin-top:10px">Auth (optional)</div>
+      <div style="font-size:10px;color:var(--text-dim);margin:-4px 0 8px;line-height:1.4">Bearer and API key can both be set. Basic auth is optional (uses HTTP Basic).</div>
+      <div class="field">
+        <label class="field-label">Bearer token</label>
+        <input class="field-input" id="auth-bearer" type="password" autocomplete="off" placeholder="JWT or access token" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">API key header</label>
+          <input class="field-input" id="auth-apikey-header" value="X-API-Key" placeholder="X-API-Key" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label class="field-label">API key value</label>
+          <input class="field-input" id="auth-apikey-value" type="password" autocomplete="off" placeholder="secret" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Basic username</label>
+          <input class="field-input" id="auth-basic-user" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label class="field-label">Basic password</label>
+          <input class="field-input" id="auth-basic-pass" type="password" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Tags -->
+    <div class="section" id="tags-section" style="display:none">
+      <div class="section-label">Filter by tag</div>
+      <div class="tag-chips" id="tag-chips">
+        <div class="tag-chip active" data-tag="all" onclick="selectTag('all', this)">All</div>
+      </div>
+    </div>
+
+    <!-- Run -->
+    <div class="section">
+      <button class="btn-run" id="run-btn" onclick="runScan()" disabled>
+        <div class="spinner"></div>
+        <span class="run-label">▶ Run Scan</span>
+      </button>
+    </div>
+
+    <!-- Export -->
+    <div class="section">
+      <div class="section-label">Export</div>
+      <div class="export-row">
+        <button class="btn-export" id="exp-postman" onclick="doExport('postman')" disabled>
+          <span class="btn-export-icon">🟠</span>Postman
+        </button>
+        <button class="btn-export" id="exp-insomnia" onclick="doExport('insomnia')" disabled>
+          <span class="btn-export-icon">🟣</span>Insomnia
+        </button>
+        <button class="btn-export" id="exp-report" onclick="doExport('report')" disabled>
+          <span class="btn-export-icon">📊</span>Report
+        </button>
+      </div>
+      <div class="export-row" style="margin-top:6px">
+        <button class="btn-export" id="exp-llm" onclick="doExport('llm')" disabled title="Markdown for LLMs; skips STATUS_CODE-only failures">
+          <span class="btn-export-icon">🤖</span>LLM fixes (.md)
+        </button>
+        <button class="btn-export" id="exp-llm-json" onclick="doExport('llm-json')" disabled title="JSON for tooling">
+          <span class="btn-export-icon">{ }</span>LLM fixes (.json)
+        </button>
+        <span></span>
+      </div>
+    </div>
+
+    <!-- Endpoint list -->
+    <div class="endpoint-list" id="endpoint-list"></div>
+
+  </aside>
+
+  <!-- ══ MAIN ════════════════════════════════════════════════════════════ -->
+  <main class="main" id="main">
+
+    <!-- Live log -->
+    <div class="live-log-wrap" id="live-log-wrap" style="display:none">
+      <div class="live-log-header">
+        <span>Live output</span>
+        <span id="log-progress-text">—</span>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+      </div>
+      <div class="live-log-body" id="live-log-body"></div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-strip" id="summary-strip" style="display:none">
+      <div class="summary-cell">
+        <div class="summary-num white" id="sum-total">0</div>
+        <div class="summary-label">Endpoints</div>
+      </div>
+      <div class="summary-cell">
+        <div class="summary-num green" id="sum-pass">0</div>
+        <div class="summary-label">Checks passed</div>
+      </div>
+      <div class="summary-cell">
+        <div class="summary-num red" id="sum-fail">0</div>
+        <div class="summary-label">Failed</div>
+      </div>
+      <div class="summary-cell">
+        <div class="summary-num yellow" id="sum-warn">0</div>
+        <div class="summary-label">Warnings</div>
+      </div>
+    </div>
+
+    <!-- Content area -->
+    <div id="content">
+      <div class="empty-state">
+        <div class="empty-state-art">⌬</div>
+        <h2>No spec loaded</h2>
+        <p>Upload or paste an OpenAPI YAML, configure your auth settings, then hit Run Scan to test all endpoints.</p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════════════════════ */
+const state = {
+  specContent: null,
+  specMeta: null,
+  selectedTag: 'all',
+  results: [],
+  scanning: false,
+  hasReport: false,
+  selectedEndpoint: null,
+  scanSessionTotal: 0,
+  resultsThisSession: 0,
+  endpointOverrides: {},
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FILE DROP
+═══════════════════════════════════════════════════════════════════════════ */
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('yaml-editor').value = e.target.result;
+    parseSpec(e.target.result);
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('yaml-editor').addEventListener('input', debounce(e => {
+  if (e.target.value.trim().length > 20) parseSpec(e.target.value);
+}, 800));
+
+document.getElementById('base-url').addEventListener('input', debounce(() => {
+  const yaml = state.specContent || document.getElementById('yaml-editor').value.trim();
+  if (yaml.length > 20) parseSpec(yaml);
+}, 600));
+
+async function parseSpec(yaml) {
+  try {
+    const fd = new FormData();
+    fd.append('spec', new Blob([yaml], {type:'text/plain'}), 'spec.yml');
+    const baseUrlVal = document.getElementById('base-url').value.trim();
+    if (baseUrlVal) fd.append('baseUrl', baseUrlVal);
+
+    const res = await fetch('/api/parse', { method:'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+
+    state.specContent = yaml;
+    state.specMeta = data;
+    state.endpointOverrides = {};
+
+    document.getElementById('spec-badge').style.display = 'flex';
+    document.getElementById('dropzone').style.display = 'none';
+    document.getElementById('spec-name').textContent = data.title;
+    document.getElementById('spec-meta').textContent = `v${data.version} · ${data.endpointCount} endpoints`;
+    if (data.baseUrl) document.getElementById('base-url').placeholder = data.baseUrl;
+
+    buildTagChips(data.tags);
+    buildEndpointList(data.endpoints, {});
+    document.getElementById('run-btn').disabled = false;
+    showEmptyState('ready');
+  } catch(err) {
+    toast('Failed to parse spec: ' + err.message, 'error');
+  }
+}
+
+function clearSpec() {
+  state.specContent = null;
+  state.specMeta = null;
+  state.results = [];
+  state.hasReport = false;
+  state.endpointOverrides = {};
+  document.getElementById('spec-badge').style.display = 'none';
+  document.getElementById('dropzone').style.display = 'block';
+  document.getElementById('yaml-editor').value = '';
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('endpoint-list').innerHTML = '';
+  document.getElementById('tags-section').style.display = 'none';
+  document.getElementById('summary-strip').style.display = 'none';
+  document.getElementById('live-log-wrap').style.display = 'none';
+  setExportEnabled(false);
+  showEmptyState('blank');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AUTH FIELDS
+═══════════════════════════════════════════════════════════════════════════ */
+function getAuthConfig() {
+  const bearer = document.getElementById('auth-bearer')?.value?.trim() || '';
+  const apiKeyHeader = document.getElementById('auth-apikey-header')?.value?.trim() || 'X-API-Key';
+  const apiKeyVal = document.getElementById('auth-apikey-value')?.value?.trim() || '';
+  const basicUser = document.getElementById('auth-basic-user')?.value?.trim() || '';
+  const basicPass = document.getElementById('auth-basic-pass')?.value || '';
+  if (!bearer && !apiKeyVal && !basicUser && !basicPass) return null;
+  const o = {};
+  if (bearer) o.bearerToken = bearer;
+  if (apiKeyVal) {
+    o.apiKeyHeader = apiKeyHeader || 'X-API-Key';
+    o.apiKeyValue = apiKeyVal;
+  }
+  if (basicUser || basicPass) {
+    o.basicUsername = basicUser;
+    o.basicPassword = basicPass;
+  }
+  return o;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAGS
+═══════════════════════════════════════════════════════════════════════════ */
+function buildTagChips(tags) {
+  const sec = document.getElementById('tags-section');
+  const wrap = document.getElementById('tag-chips');
+  if (!tags || tags.length === 0) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  wrap.innerHTML = `<div class="tag-chip active" data-tag="all" onclick="selectTag('all',this)">All</div>` +
+    tags.map(t => `<div class="tag-chip" data-tag="${t}" onclick="selectTag('${t}',this)">${t}</div>`).join('');
+}
+
+function selectTag(tag, el) {
+  state.selectedTag = tag;
+  document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ENDPOINT LIST
+═══════════════════════════════════════════════════════════════════════════ */
+function escAttr(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;');
+}
+
+function buildEndpointList(endpoints, statusMap) {
+  const list = document.getElementById('endpoint-list');
+  if (!endpoints || endpoints.length === 0) { list.innerHTML = ''; return; }
+  list.innerHTML = endpoints.map((ep, i) => {
+    const s = statusMap[ep.operationId] || 'pending';
+    return `<div class="endpoint-item" id="ep-item-${i}" onclick="selectEndpoint(${i})">
+      <button type="button" class="endpoint-run" title="Run only this endpoint" data-opid="${escAttr(ep.operationId)}" onclick="event.stopPropagation(); runSingleEndpoint(this.dataset.opid)">▶</button>
+      <span class="method-badge method-${ep.method}">${ep.method}</span>
+      <span class="endpoint-path" title="${escAttr(ep.url)}">${esc(ep.pathTemplate || ep.url)}</span>
+      <span class="endpoint-status-dot dot-${s}" id="ep-dot-${i}"></span>
+    </div>`;
+  }).join('');
+}
+
+function updateEndpointDot(index, status) {
+  const dot = document.getElementById(`ep-dot-${index}`);
+  if (dot) { dot.className = `endpoint-status-dot dot-${status}`; }
+}
+
+function markRunning(index) {
+  const dot = document.getElementById(`ep-dot-${index}`);
+  if (dot) dot.className = 'endpoint-status-dot dot-running';
+}
+
+function mergeScanResult(result) {
+  const id = result.endpoint.operationId;
+  const rest = state.results.filter(r => r.endpoint.operationId !== id);
+  rest.push(result);
+  const order = Object.fromEntries((state.specMeta?.endpoints || []).map((e, i) => [e.operationId, i]));
+  rest.sort((a, b) => (order[a.endpoint.operationId] ?? 1e9) - (order[b.endpoint.operationId] ?? 1e9));
+  state.results = rest;
+}
+
+function summarizeCheckCounts(results) {
+  const t = { passed: 0, failed: 0, warned: 0 };
+  results.forEach(r => {
+    t.passed += r.counts?.pass || 0;
+    t.failed += r.counts?.fail || 0;
+    t.warned += r.counts?.warn || 0;
+  });
+  return t;
+}
+
+function sanitizeOverrides(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out = {};
+  for (const [id, v] of Object.entries(raw)) {
+    if (!v || typeof v !== 'object') continue;
+    const entry = {};
+    if (Object.prototype.hasOwnProperty.call(v, 'requestBody')) entry.requestBody = v.requestBody;
+    if (v.expectedResponses && typeof v.expectedResponses === 'object' && Object.keys(v.expectedResponses).length)
+      entry.expectedResponses = v.expectedResponses;
+    if (Object.keys(entry).length) out[id] = entry;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function safeTextareaContent(s) {
+  return String(s || '').replace(/<\/textarea/gi, '<\\/textarea');
+}
+
+function overrideBodyEditorText(operationId, endpointFromResult) {
+  const o = state.endpointOverrides[operationId];
+  if (o && Object.prototype.hasOwnProperty.call(o, 'requestBody')) {
+    try { return JSON.stringify(o.requestBody, null, 2); } catch (_) { return ''; }
+  }
+  const rb = endpointFromResult?.requestBody;
+  if (rb !== undefined && rb !== null) {
+    try { return JSON.stringify(rb, null, 2); } catch (_) { return ''; }
+  }
+  return '';
+}
+
+function overrideSchemaEditorText(operationId, endpointFromResult) {
+  const o = state.endpointOverrides[operationId];
+  const er = endpointFromResult?.expectedResponses || {};
+  const merged = { ...er };
+  if (o?.expectedResponses && typeof o.expectedResponses === 'object') {
+    for (const [c, val] of Object.entries(o.expectedResponses)) {
+      merged[c] = { ...(merged[c] || {}), ...val };
+    }
+  }
+  const slim = {};
+  for (const [code, val] of Object.entries(merged)) {
+    slim[code] = { schema: val.schema, description: val.description };
+  }
+  try { return JSON.stringify(slim, null, 2); } catch (_) { return '{}'; }
+}
+
+function parseOverridesFromDetail(operationId) {
+  const bodyTa = document.getElementById('override-body-json');
+  const schemaTa = document.getElementById('override-schema-json');
+  const bodyStr = (bodyTa?.value ?? '').trim();
+  const schemaStr = (schemaTa?.value ?? '').trim();
+
+  let rbClear = false;
+  let rbVal;
+  if (bodyStr === '') rbClear = true;
+  else {
+    try { rbVal = JSON.parse(bodyStr); }
+    catch (e) { toast('Request body JSON: ' + e.message, 'error'); return false; }
+  }
+
+  let erClear = false;
+  let erVal;
+  if (schemaStr === '' || schemaStr === '{}') erClear = true;
+  else {
+    try {
+      erVal = JSON.parse(schemaStr);
+      if (!erVal || typeof erVal !== 'object' || Array.isArray(erVal)) throw new Error('expected object keyed by status code');
+    } catch (e) {
+      toast('Expected responses JSON: ' + e.message, 'error');
+      return false;
+    }
+  }
+
+  const entry = { ...state.endpointOverrides[operationId] };
+  if (rbClear) delete entry.requestBody;
+  else entry.requestBody = rbVal;
+
+  if (erClear) delete entry.expectedResponses;
+  else entry.expectedResponses = erVal;
+
+  if (Object.keys(entry).length === 0) delete state.endpointOverrides[operationId];
+  else state.endpointOverrides[operationId] = entry;
+
+  return true;
+}
+
+function applyAndRetestEndpoint(operationId) {
+  if (!parseOverridesFromDetail(operationId)) return;
+  runScan({ onlyOperationId: operationId });
+}
+
+function clearEndpointOverrides(operationId) {
+  delete state.endpointOverrides[operationId];
+  const r = state.results.find(x => x.endpoint.operationId === operationId);
+  if (r) renderDetail(r);
+  toast('Cleared overrides for this endpoint', 'info');
+}
+
+function runSingleEndpoint(operationId) {
+  if (!operationId || state.scanning) return;
+  runScan({ onlyOperationId: operationId });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RUN SCAN
+═══════════════════════════════════════════════════════════════════════════ */
+async function runScan(extra = {}) {
+  const onlyOperationId = extra.onlyOperationId || null;
+
+  if (state.scanning) return;
+  const yaml = state.specContent || document.getElementById('yaml-editor').value.trim();
+  if (!yaml) { toast('Load a spec first', 'error'); return; }
+
+  state.scanning = true;
+  state.resultsThisSession = 0;
+  state.scanSessionTotal = 0;
+
+  if (!onlyOperationId) {
+    state.results = [];
+    state.hasReport = false;
+    state.selectedEndpoint = null;
+    setExportEnabled(false);
+  }
+
+  document.querySelectorAll('.endpoint-run').forEach(b => { b.disabled = true; });
+
+  // UI setup
+  document.getElementById('run-btn').classList.add('running');
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('live-log-wrap').style.display = 'block';
+  document.getElementById('summary-strip').style.display = 'grid';
+  document.getElementById('live-log-body').innerHTML = '';
+  document.getElementById('progress-bar').style.width = '0%';
+  setStatus('scanning', onlyOperationId ? 'single' : 'scanning');
+
+  const opts = {
+    timeout: parseInt(document.getElementById('timeout').value),
+    responseTimeThreshold: parseInt(document.getElementById('resp-threshold').value),
+    tag: state.selectedTag !== 'all' ? state.selectedTag : undefined,
+    auth: getAuthConfig(),
+    ...(onlyOperationId ? { onlyOperationId } : {}),
+  };
+  const baseUrlVal = document.getElementById('base-url').value.trim();
+  if (baseUrlVal) opts.baseUrl = baseUrlVal;
+  const eo = sanitizeOverrides(state.endpointOverrides);
+  if (eo) opts.endpointOverrides = eo;
+
+  const fd = new FormData();
+  fd.append('spec', new Blob([yaml], {type:'text/plain'}), 'spec.yml');
+  fd.append('options', JSON.stringify(opts));
+
+  try {
+    const res = await fetch('/api/scan', { method:'POST', body: fd });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split('\n\n');
+      buf = events.pop();
+      for (const ev of events) {
+        const lines = ev.split('\n');
+        const eventLine = lines.find(l => l.startsWith('event:'));
+        const dataLine  = lines.find(l => l.startsWith('data:'));
+        if (!eventLine || !dataLine) continue;
+        const evName = eventLine.replace('event:', '').trim();
+        const evData = JSON.parse(dataLine.replace('data:', '').trim());
+        handleSseEvent(evName, evData);
+      }
+    }
+  } catch(err) {
+    appendLog('error', '❌ Stream error: ' + err.message);
+  }
+
+  state.scanning = false;
+  document.getElementById('run-btn').classList.remove('running');
+  document.getElementById('run-btn').disabled = false;
+  document.querySelectorAll('.endpoint-run').forEach(b => { b.disabled = false; });
+  setStatus('active', 'done');
+
+  if (state.results.length > 0) {
+    state.hasReport = true;
+    setExportEnabled(true);
+    showOverview();
+    const statusMap = {};
+    state.results.forEach(r => { statusMap[r.endpoint.operationId] = r.status; });
+    if (state.specMeta) buildEndpointList(state.specMeta.endpoints, statusMap);
+  }
+}
+
+function handleSseEvent(name, data) {
+  const specTotal = state.specMeta?.endpointCount ?? 0;
+
+  if (name === 'start') {
+    state.scanSessionTotal = data.total || 1;
+    appendLog('info', `▶ Starting scan: ${data.title} v${data.version} — ${data.total} endpoint(s) in this run`);
+    const totals = summarizeCheckCounts(state.results);
+    updateSummary({ totalEndpoints: specTotal || data.total, ...totals });
+  } else if (name === 'progress') {
+    const sessTotal = Math.max(1, state.scanSessionTotal || 1);
+    const epList = state.specMeta?.endpoints || [];
+    const idx = data.endpoint?.operationId
+      ? epList.findIndex(e => e.operationId === data.endpoint.operationId)
+      : data.index;
+    if (idx >= 0) markRunning(idx);
+    document.getElementById('log-progress-text').textContent = `${data.index + 1} / ${sessTotal}`;
+    document.getElementById('progress-bar').style.width = `${((data.index) / sessTotal) * 100}%`;
+    appendLog('info', `▸ Testing ${data.endpoint.method} ${data.endpoint.url} (${data.endpoint.operationId || ''})`);
+  } else if (name === 'result') {
+    mergeScanResult(data);
+    state.resultsThisSession++;
+    const epList = state.specMeta?.endpoints || [];
+    const uiIdx = epList.findIndex(e => e.operationId === data.endpoint.operationId);
+    if (uiIdx >= 0) updateEndpointDot(uiIdx, data.status);
+    const icon = data.status === 'pass' ? '✓' : data.status === 'warn' ? '⚠' : '✗';
+    const type = data.status === 'pass' ? 'pass' : data.status === 'warn' ? 'warn' : 'fail';
+    appendLog(type, `${icon} ${data.endpoint.method} ${data.endpoint.url} → ${data.response?.status || 'ERR'} (${data.response?.elapsed || '?'}ms)`);
+    const totals = summarizeCheckCounts(state.results);
+    const sessTotal = Math.max(1, state.scanSessionTotal || 1);
+    updateSummary({ totalEndpoints: specTotal || state.results.length, ...totals });
+    document.getElementById('progress-bar').style.width = `${(state.resultsThisSession / sessTotal) * 100}%`;
+    document.getElementById('log-progress-text').textContent = `${state.resultsThisSession} / ${sessTotal}`;
+  } else if (name === 'done') {
+    appendLog('pass', `✓ Scan complete — ${data.meta.passed} passed, ${data.meta.failed} failed, ${data.meta.warned} warnings (this run)`);
+    document.getElementById('progress-bar').style.width = '100%';
+    document.getElementById('log-progress-text').textContent = 'Complete';
+    const totals = summarizeCheckCounts(state.results);
+    updateSummary({ totalEndpoints: specTotal || state.results.length, ...totals });
+  } else if (name === 'error') {
+    appendLog('fail', '❌ ' + data.message);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUMMARY
+═══════════════════════════════════════════════════════════════════════════ */
+function updateSummary(meta) {
+  document.getElementById('sum-total').textContent = meta.totalEndpoints || 0;
+  document.getElementById('sum-pass').textContent  = meta.passed || 0;
+  document.getElementById('sum-fail').textContent  = meta.failed || 0;
+  document.getElementById('sum-warn').textContent  = meta.warned || 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONTENT RENDERING
+═══════════════════════════════════════════════════════════════════════════ */
+function showEmptyState(mode) {
+  const msgs = {
+    blank: ['No spec loaded', 'Upload or paste an OpenAPI YAML, configure auth, then hit Run Scan.'],
+    ready: ['Ready to scan', `Loaded ${state.specMeta?.endpointCount || 0} endpoints. Hit Run Scan to start testing.`],
+  };
+  const [h, p] = msgs[mode] || msgs.blank;
+  document.getElementById('content').innerHTML = `<div class="empty-state">
+    <div class="empty-state-art">⌬</div>
+    <h2>${h}</h2>
+    <p>${p}</p>
+  </div>`;
+}
+
+function showOverview() {
+  const results = state.results;
+  const failCount = results.filter(r => r.status === 'fail').length;
+  const warnCount = results.filter(r => r.status === 'warn').length;
+
+  document.getElementById('content').innerHTML = `
+    <div class="overview">
+      <div class="overview-title">${state.specMeta?.title || 'Scan Results'}</div>
+      <div class="overview-sub">Click any card to see full test breakdown • ${results.length} endpoints tested</div>
+      <div class="result-cards">
+        ${results.map((r, i) => renderResultCard(r, i)).join('')}
+      </div>
+    </div>`;
+}
+
+function renderResultCard(r, i) {
+  const failC = r.counts?.fail || 0;
+  const warnC = r.counts?.warn || 0;
+  const passC = r.counts?.pass || 0;
+  const fkC   = r.fkIssues?.length || 0;
+  const icon  = r.status === 'pass' ? '✓' : r.status === 'warn' ? '⚠' : '✗';
+  return `<div class="result-card card-${r.status}" onclick="selectEndpointByIndex(${i})">
+    <span class="method-badge method-${r.endpoint.method}">${r.endpoint.method}</span>
+    <div class="card-info">
+      <h3>${r.endpoint.summary || r.endpoint.operationId}</h3>
+      <div class="card-url">${r.endpoint.url}</div>
+    </div>
+    <div class="card-counts">
+      ${failC > 0 ? `<span class="count-chip count-fail">${failC} fail</span>` : ''}
+      ${warnC > 0 ? `<span class="count-chip count-warn">${warnC} warn</span>` : ''}
+      ${fkC  > 0 ? `<span class="count-chip" style="background:rgba(245,166,35,0.12);color:#f5a623">${fkC} FK</span>` : ''}
+      ${failC === 0 && warnC === 0 ? `<span class="count-chip count-pass">${passC} pass</span>` : ''}
+    </div>
+    <div class="card-timing">
+      ${r.response ? `<div>${r.response.status}</div><div>${r.response.elapsed}ms</div>` : '<div style="color:var(--fail)">NO RESP</div>'}
+    </div>
+  </div>`;
+}
+
+function selectEndpoint(index) {
+  document.querySelectorAll('.endpoint-item').forEach((el, i) => el.classList.toggle('active', i === index));
+  const ep = state.specMeta?.endpoints?.[index];
+  if (!ep) return;
+  const r = state.results.find(x => x.endpoint.operationId === ep.operationId);
+  if (r) renderDetail(r);
+}
+
+function selectEndpointByIndex(i) {
+  state.selectedEndpoint = i;
+  const r = state.results[i];
+  if (!r) return;
+  renderDetail(r);
+  const epList = state.specMeta?.endpoints || [];
+  const j = epList.findIndex(e => e.operationId === r.endpoint.operationId);
+  document.querySelectorAll('.endpoint-item').forEach((el, k) => el.classList.toggle('active', k === j));
+  const item = document.getElementById(`ep-item-${j}`);
+  if (item) item.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function renderDetail(r) {
+  const statusColor = r.status === 'pass' ? 'green' : r.status === 'warn' ? 'yellow' : 'red';
+  const icon = r.status === 'pass' ? '✓' : r.status === 'warn' ? '⚠' : '✗';
+  const opId = r.endpoint.operationId;
+  const bodyTxt = overrideBodyEditorText(opId, r.endpoint);
+  const schemaTxt = overrideSchemaEditorText(opId, r.endpoint);
+  const opJson = JSON.stringify(opId);
+
+  const testsHtml = (r.tests || []).map(t => {
+    const icons = { pass:'✓', fail:'✗', warn:'⚠', skip:'—', info:'ℹ' };
+    const errList = t.details?.errors?.length
+      ? `<ul class="error-list">${t.details.errors.slice(0,5).map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : '';
+    const explain = t.details?.explanation ? `<div class="test-detail-note">${esc(t.details.explanation)}</div>` : '';
+    const hint = t.details?.hint ? `<div class="test-detail-hint">${esc(t.details.hint)}</div>` : '';
+    return `<div class="test-row ${t.status}">
+      <span class="test-icon">${icons[t.status] || '·'}</span>
+      <span class="test-check">${esc(t.check)}</span>
+      <div><span class="test-message">${esc(t.message)}</span>${explain}${hint}${errList}</div>
+    </div>`;
+  }).join('');
+
+  const fkHtml = (r.fkIssues || []).length > 0 ? `
+    <div class="fk-section">
+      <div class="fk-section-title">🔗 Foreign key analysis (${r.fkIssues.length})</div>
+      ${r.fkIssues.map(fk => `
+        <div class="fk-card">
+          <div class="fk-card-header">
+            <span class="fk-badge ${fk.severity || 'warning'}">${esc(fk.type)}</span>
+            ${fk.fkField ? `<span class="fk-field">${esc(fk.fkField)}</span>` : ''}
+            ${fk.expectedRelation ? `<span style="font-size:10px;color:var(--text-dim)">→ ${esc(fk.expectedRelation)}</span>` : ''}
+          </div>
+          <div class="fk-message">${esc(fk.message)}</div>
+          ${fk.suggestion ? `<div class="fk-suggestion">${esc(fk.suggestion)}</div>` : ''}
+        </div>`).join('')}
+    </div>` : '';
+
+  document.getElementById('content').innerHTML = `
+    <div class="result-detail">
+      <div class="result-title">
+        <span class="method-badge method-${r.endpoint.method}" style="font-size:11px;padding:4px 10px">${r.endpoint.method}</span>
+        <div class="result-title-text">
+          <h2>${esc(r.endpoint.summary || r.endpoint.operationId)}</h2>
+          <div class="url-display">${esc(r.endpoint.url)}</div>
+          <div class="result-meta">
+            <span class="meta-chip ${statusColor}">${icon} ${r.status.toUpperCase()}</span>
+            ${r.response ? `<span class="meta-chip">${r.response.status}</span><span class="meta-chip">${r.response.elapsed}ms</span>` : '<span class="meta-chip red">No response</span>'}
+            ${(r.counts?.fail||0) > 0 ? `<span class="meta-chip red">${r.counts.fail} failed</span>` : ''}
+            ${(r.counts?.warn||0) > 0 ? `<span class="meta-chip yellow">${r.counts.warn} warnings</span>` : ''}
+            ${(r.fkIssues?.length||0) > 0 ? `<span class="meta-chip yellow">${r.fkIssues.length} FK issues</span>` : ''}
+            <span class="meta-chip" onclick="showOverview()" style="cursor:pointer">← All results</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="override-panel">
+        <div class="override-panel-title">Overrides &amp; retest</div>
+        <div class="override-help">Edit JSON and click Apply &amp; retest. Leave body empty to drop body overrides (defaults shown from OpenAPI). Use <code>{}</code> for responses to drop schema overrides. Run Scan also sends all saved overrides.</div>
+        <div class="override-panel-actions">
+          <button type="button" class="primary" onclick="applyAndRetestEndpoint(${opJson})">Apply &amp; retest this endpoint</button>
+          <button type="button" onclick="clearEndpointOverrides(${opJson})">Clear overrides</button>
+        </div>
+        <div class="override-field-label">Request body (POST / PUT / PATCH)</div>
+        <textarea class="override-textarea" id="override-body-json" spellcheck="false">${safeTextareaContent(bodyTxt)}</textarea>
+        <div class="override-field-label">Expected responses by status <code>{ "200": { "schema": { } } }</code></div>
+        <textarea class="override-textarea" id="override-schema-json" spellcheck="false">${safeTextareaContent(schemaTxt)}</textarea>
+      </div>
+
+      <div class="section-label" style="margin-bottom:8px">Test Results (${r.tests?.length || 0})</div>
+      <div class="tests-grid">${testsHtml}</div>
+      ${fkHtml}
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXPORT
+═══════════════════════════════════════════════════════════════════════════ */
+function doExport(format) {
+  if (!state.hasReport) { toast('Run a scan first', 'error'); return; }
+  const a = document.createElement('a');
+  a.href = `/api/export/${format}`;
+  a.download = '';
+  a.click();
+}
+
+function setExportEnabled(on) {
+  ['exp-postman','exp-insomnia','exp-report','exp-llm','exp-llm-json'].forEach(id => {
+    document.getElementById(id).disabled = !on;
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOG
+═══════════════════════════════════════════════════════════════════════════ */
+function appendLog(type, msg) {
+  const body = document.getElementById('live-log-body');
+  const ts = new Date().toLocaleTimeString('en', { hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const div = document.createElement('div');
+  div.className = `log-line log-${type}`;
+  div.innerHTML = `<span class="ts">${ts}</span><span class="lm">${esc(msg)}</span>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATUS PILL
+═══════════════════════════════════════════════════════════════════════════ */
+function setStatus(dotClass, text) {
+  document.getElementById('status-dot').className = `pill-dot ${dotClass}`;
+  document.getElementById('status-text').textContent = text;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════════════════════ */
+function toast(msg, type = 'info') {
+  const wrap = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════════════════════════════ */
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function debounce(fn, ms) {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+</script>
+</body>
+</html>

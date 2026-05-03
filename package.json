@@ -1,0 +1,41 @@
+{
+  "name": "api-scanner",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "build:dev": "tsc -p tsconfig.dev.json",
+    "build:watch": "tsc -p tsconfig.dev.json --watch",
+    "start": "node dist/server.js",
+    "scan": "node dist/cli.js",
+    "scan:dev": "tsx src/cli.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "axios": "^1.16.0",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "js-yaml": "^4.1.1",
+    "lodash": "^4.18.1",
+    "multer": "^2.1.1",
+    "ora": "^5.4.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.4",
+    "@types/js-yaml": "^4.0.9",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^22.19.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
