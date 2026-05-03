@@ -18,6 +18,8 @@ import { buildHttpConnectionFailure } from "./http-connection-error";
 import { filterToSingleEndpoint } from "./endpoint-selection";
 import { applyEndpointOverrides } from "./endpoint-overrides";
 import { loadSpec, extractEndpoints, applyBaseUrlOverride } from "./parser";
+import { logger } from "./logging";
+import pinoHttp from "pino-http";
 import {
   applyResolvedAuth,
   authContextFromResolved,
@@ -36,6 +38,10 @@ import type {
   TestResult,
 } from "./types";
 
+const parseLog = logger.child({ scope: "parse" });
+const scanLog = logger.child({ scope: "scan" });
+const exportLog = logger.child({ scope: "export" });
+
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -43,6 +49,16 @@ const activeReports = new Map<string, ScanReport>();
 
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  pinoHttp({
+    logger,
+    autoLogging: {
+      ignore: (req) => !(req.url ?? "").startsWith("/api"),
+    },
+  }),
+);
+
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.post(
@@ -95,8 +111,17 @@ app.post(
         })),
         specContent,
       });
+      parseLog.info(
+        {
+          title: spec.info?.title,
+          endpoints: endpoints.length,
+          baseUrlOverride: Boolean(baseUrlField),
+        },
+        "spec parsed",
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      parseLog.error({ err: msg }, "parse failed");
       res.status(400).json({ error: msg });
     }
   },
@@ -167,6 +192,7 @@ app.post(
         onlyIndex: onlyIdxParsed,
       });
       if (singleSel.error) {
+        scanLog.warn({ message: singleSel.error }, "scan rejected: endpoint selection");
         send("error", { message: singleSel.error });
         res.end();
         return;
@@ -185,6 +211,7 @@ app.post(
       endpoints = applyEndpointOverrides(endpoints, endpointOverrides);
 
       if (endpoints.length === 0) {
+        scanLog.warn("scan aborted: no endpoints after filters");
         send("error", {
           message:
             "No endpoints to test after filters (tag / single-endpoint selection).",
@@ -192,6 +219,22 @@ app.post(
         res.end();
         return;
       }
+
+      scanLog.info(
+        {
+          title: spec.info?.title,
+          endpoints: endpoints.length,
+          tag: typeof tagOpt === "string" ? tagOpt : undefined,
+          onlyOperationId:
+            typeof onlyOpRaw === "string" && onlyOpRaw.trim()
+              ? onlyOpRaw.trim()
+              : undefined,
+          endpointOverridesCount: endpointOverrides
+            ? Object.keys(endpointOverrides).length
+            : 0,
+        },
+        "scan started",
+      );
 
       const config = (spec["x-scanner"] as ScannerXConfig | undefined) || {};
       const auth = resolveRequestAuth(config.auth, options.auth);
@@ -231,6 +274,18 @@ app.post(
         });
         results.push(result);
 
+        scanLog.debug(
+          {
+            index: i,
+            operationId: endpoint.operationId,
+            method: endpoint.method,
+            outcome: result.status,
+            httpStatus: result.response?.status,
+            elapsedMs: result.response?.elapsed,
+          },
+          "endpoint tested",
+        );
+
         for (const t of result.tests) {
           if (t.status === "pass") passed++;
           else if (t.status === "fail") failed++;
@@ -259,8 +314,18 @@ app.post(
       activeReports.set("latest", report);
 
       send("done", { meta: report.meta });
+      scanLog.info(
+        {
+          totalEndpoints: report.meta.totalEndpoints,
+          passed: report.meta.passed,
+          failed: report.meta.failed,
+          warned: report.meta.warned,
+        },
+        "scan finished",
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      scanLog.error({ err: msg }, "scan failed");
       send("error", { message: msg });
     }
 
@@ -271,6 +336,7 @@ app.post(
 app.get("/api/export/:format", (req: Request, res: Response): void => {
   const report = activeReports.get("latest");
   if (!report) {
+    exportLog.warn({ format: req.params.format }, "export missing report");
     res
       .status(404)
       .json({ error: "No report available. Run a scan first." });
@@ -279,6 +345,7 @@ app.get("/api/export/:format", (req: Request, res: Response): void => {
 
   const spec = report._spec;
   if (!spec) {
+    exportLog.error("export report has no spec reference");
     res.status(500).json({ error: "Report missing spec reference" });
     return;
   }
@@ -324,12 +391,23 @@ app.get("/api/export/:format", (req: Request, res: Response): void => {
     );
     res.json(cleanReport);
   } else {
+    exportLog.warn({ format }, "unknown export format");
     res
       .status(400)
       .json({
         error:
           "Unknown format. Use: postman, insomnia, report, llm, llm-json",
       });
+  }
+
+  if (
+    format === "postman" ||
+    format === "insomnia" ||
+    format === "report" ||
+    format === "llm" ||
+    format === "llm-json"
+  ) {
+    exportLog.info({ format }, "export served");
   }
 });
 
@@ -365,6 +443,16 @@ async function testEndpointStreaming(
         elapsed: Date.now() - startTime,
       };
     } else {
+      scanLog.warn(
+        {
+          operationId: endpoint.operationId,
+          method: endpoint.method,
+          url: endpoint.url,
+          err: err instanceof Error ? err.message : String(err),
+          code: axios.isAxiosError(err) ? err.code : undefined,
+        },
+        "no HTTP response from upstream",
+      );
       const tests: TestResult[] = [buildHttpConnectionFailure(endpoint, err)];
       return buildStreamerResult(endpoint, null, tests, []);
     }
@@ -465,5 +553,5 @@ function buildStreamerResult(
 
 const PORT = Number(process.env.PORT) || 3847;
 app.listen(PORT, () => {
-  console.log(`\n🔍 api-scanner UI running at http://localhost:${PORT}\n`);
+  logger.info({ port: PORT }, "api-scanner listening");
 });

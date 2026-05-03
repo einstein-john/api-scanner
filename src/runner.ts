@@ -10,6 +10,7 @@ import {
   resolveRequestAuth,
   type ResolvedRequestAuth,
 } from "./request-auth";
+import { logger } from "./logging";
 import type {
   AuthContextSummary,
   EndpointDefinition,
@@ -20,6 +21,8 @@ import type {
   ScanReport,
   TestResult,
 } from "./types";
+
+const runnerLog = logger.child({ scope: "runner" });
 
 /**
  * Runs all tests against all endpoints in the spec.
@@ -47,7 +50,14 @@ export async function runTests(
   let warned = 0;
 
   for (const endpoint of endpointsToRun) {
-    console.log(`  ▸ ${endpoint.method} ${endpoint.url}`);
+    runnerLog.info(
+      {
+        method: endpoint.method,
+        url: endpoint.url,
+        operationId: endpoint.operationId,
+      },
+      "testing endpoint",
+    );
     const result = await testEndpoint(endpoint, {
       auth,
       timeout,
@@ -64,6 +74,16 @@ export async function runTests(
 
     if (options.stopOnFirstFail && failed > 0) break;
   }
+
+  runnerLog.info(
+    {
+      totalEndpoints: endpointsToRun.length,
+      checkPasses: passed,
+      checkFails: failed,
+      checkWarns: warned,
+    },
+    "run finished",
+  );
 
   return {
     meta: {
@@ -102,6 +122,16 @@ async function testEndpoint(
       response = normalizeResponse(err.response, Date.now() - startTime);
     } else {
       const tests: TestResult[] = [buildHttpConnectionFailure(endpoint, err)];
+      runnerLog.warn(
+        {
+          operationId: endpoint.operationId,
+          method: endpoint.method,
+          url: endpoint.url,
+          err: err instanceof Error ? err.message : String(err),
+          code: axios.isAxiosError(err) ? err.code : undefined,
+        },
+        "no HTTP response from upstream",
+      );
       return buildEndpointResult(endpoint, null, tests, []);
     }
   }

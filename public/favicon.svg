@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <style type="text/css"><![CDATA[
+      @import url("https://fonts.googleapis.com/css2?family=Syne:wght@700&display=swap");
+      .glyph {
+        font-family: "Syne", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-weight: 700;
+        font-size: 16px;
+        fill: #000000;
+      }
+    ]]></style>
+  </defs>
+  <!-- Matches header .logo-icon: 28px tile, #00e5a0, rx 6px, 14px Syne 700 black U+232C -->
+  <rect width="32" height="32" rx="6.857" ry="6.857" fill="#00e5a0"/>
+  <text class="glyph" x="16" y="16.5" text-anchor="middle" dominant-baseline="central">&#x232C;</text>
+</svg>

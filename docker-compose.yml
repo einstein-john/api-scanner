@@ -6,3 +6,4 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3847"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"

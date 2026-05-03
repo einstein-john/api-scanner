@@ -3,6 +3,9 @@ import type {
   EndpointOverridePayload,
   ExpectedResponse,
 } from "./types";
+import { logger } from "./logging";
+
+const overridesLog = logger.child({ scope: "overrides" });
 
 export function applyEndpointOverrides(
   endpoints: EndpointDefinition[],
@@ -10,9 +13,14 @@ export function applyEndpointOverrides(
 ): EndpointDefinition[] {
   if (!overrides || typeof overrides !== "object") return endpoints;
 
-  return endpoints.map((ep) => {
+  const keys = Object.keys(overrides);
+  if (keys.length === 0) return endpoints;
+
+  let matched = 0;
+  const merged = endpoints.map((ep) => {
     const o = overrides[ep.operationId];
     if (!o || typeof o !== "object") return ep;
+    matched++;
 
     const mergedResponses =
       o.expectedResponses && typeof o.expectedResponses === "object"
@@ -29,6 +37,13 @@ export function applyEndpointOverrides(
       expectedResponses: mergedResponses,
     };
   });
+
+  overridesLog.info(
+    { overrideDefinitions: keys.length, endpointsMatched: matched },
+    "endpoint overrides applied",
+  );
+
+  return merged;
 }
 
 function mergeExpectedResponses(

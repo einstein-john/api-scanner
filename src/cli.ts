@@ -12,10 +12,13 @@ import {
 } from "./exporters/llm-fix-report";
 import { exportPostman } from "./exporters/postman";
 import { filterToSingleEndpoint } from "./endpoint-selection";
+import { logger } from "./logging";
 import { loadSpec, extractEndpoints } from "./parser";
 import type { EndpointOverridesMap } from "./types";
 import { printReport } from "./reporters/terminal";
 import { runTests } from "./runner";
+
+const cliLog = logger.child({ scope: "cli" });
 
 interface CliOptions extends OptionValues {
   output: string;
@@ -89,6 +92,28 @@ program
   .action(async (specPath: string, options: CliOptions) => {
     console.log(chalk.bold("\n🔍 api-scanner\n"));
 
+    const resolvedSpecPath = path.resolve(specPath);
+    cliLog.info(
+      {
+        specPath: resolvedSpecPath,
+        tag: options.tag,
+        onlyOperationId: options.onlyOperationId?.trim() || undefined,
+        onlyIndex:
+          options.onlyIndex !== undefined && String(options.onlyIndex).trim() !== ""
+            ? options.onlyIndex
+            : undefined,
+        timeout: parseInt(options.timeout, 10),
+        stopOnFirstFail: options.stopOnFail || false,
+        skipExport: options.skipExport || false,
+        format: options.format,
+        writeLlmReport: options.writeLlmReport || false,
+        hasBearer: Boolean(options.bearer?.trim()),
+        hasApiKey: Boolean(options.apiKey?.trim()),
+        endpointOverridesPath: options.endpointOverrides?.trim() || undefined,
+      },
+      "cli scan starting",
+    );
+
     const loadSpinner = ora("Loading spec...").start();
     let spec: ReturnType<typeof loadSpec>;
     let endpoints: ReturnType<typeof extractEndpoints>;
@@ -98,9 +123,18 @@ program
       loadSpinner.succeed(
         `Loaded: ${chalk.bold(spec.info?.title || specPath)} (${endpoints.length} endpoints)`,
       );
+      cliLog.info(
+        {
+          title: spec.info?.title,
+          endpoints: endpoints.length,
+          version: spec.info?.version,
+        },
+        "spec parsed for cli",
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       loadSpinner.fail(`Failed to load spec: ${msg}`);
+      cliLog.error({ err: msg, specPath: resolvedSpecPath }, "cli spec load failed");
       process.exit(1);
     }
 
@@ -113,6 +147,7 @@ program
           `  Filtered to tag "${options.tag}": ${filtered.length} endpoints`,
         ),
       );
+      cliLog.info({ tag, endpoints: filtered.length }, "cli tag filter applied");
     }
 
     let onlyIndexArg: number | undefined;
@@ -125,6 +160,10 @@ program
         console.error(
           chalk.red(`Invalid --only-index: "${options.onlyIndex}"`),
         );
+        cliLog.error(
+          { onlyIndex: options.onlyIndex },
+          "cli invalid --only-index",
+        );
         process.exit(1);
       }
       onlyIndexArg = n;
@@ -136,6 +175,7 @@ program
     });
     if (singleSel.error) {
       console.error(chalk.red(singleSel.error));
+      cliLog.warn({ message: singleSel.error }, "cli endpoint selection failed");
       process.exit(1);
     }
     filtered = singleSel.endpoints;
@@ -153,6 +193,7 @@ program
 
     if (filtered.length === 0) {
       console.log(chalk.yellow("No endpoints to test."));
+      cliLog.warn("cli exiting: zero endpoints after filters");
       process.exit(0);
     }
 
@@ -177,13 +218,19 @@ program
           console.error(
             chalk.red("--endpoint-overrides must be a JSON object keyed by operationId"),
           );
+          cliLog.error({ path: abs }, "cli endpoint overrides invalid shape");
           process.exit(1);
         }
         endpointOverrides = parsed as EndpointOverridesMap;
         console.log(chalk.dim(`  Endpoint overrides: ${abs}`));
+        cliLog.info(
+          { path: abs, operationIds: Object.keys(endpointOverrides).length },
+          "cli endpoint overrides loaded",
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(chalk.red(`Failed to read --endpoint-overrides: ${msg}`));
+        cliLog.error({ err: msg, path: abs }, "cli endpoint overrides read failed");
         process.exit(1);
       }
     }
@@ -202,8 +249,19 @@ program
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`Test runner error: ${msg}`));
+      cliLog.error({ err: msg }, "cli runTests failed");
       process.exit(1);
     }
+
+    cliLog.info(
+      {
+        endpointsTested: report.meta.totalEndpoints,
+        checksPassed: report.meta.passed,
+        checksFailed: report.meta.failed,
+        checksWarned: report.meta.warned,
+      },
+      "cli tests finished",
+    );
 
     printReport(report);
 
@@ -248,6 +306,15 @@ program
         );
       }
       console.log();
+      cliLog.info(
+        {
+          outputDir,
+          files: exported.map((e) => ({ kind: e.name, path: e.path })),
+        },
+        "cli exports written",
+      );
+    } else if (!options.writeLlmReport) {
+      cliLog.info("cli skip-export: file exports skipped");
     }
 
     if (options.writeLlmReport) {
@@ -262,9 +329,12 @@ program
       console.log(`   ${chalk.green("✓")} Markdown: ${chalk.cyan(mdPath)}`);
       console.log(`   ${chalk.green("✓")} JSON: ${chalk.cyan(jsonPath)}`);
       console.log();
+      cliLog.info({ markdownPath: mdPath, jsonPath }, "cli llm reports written");
     }
 
-    process.exit(report.meta.failed > 0 ? 1 : 0);
+    const exitCode = report.meta.failed > 0 ? 1 : 0;
+    cliLog.info({ exitCode }, "cli exiting");
+    process.exit(exitCode);
   });
 
 program.parse();

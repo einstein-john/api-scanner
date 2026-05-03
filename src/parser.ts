@@ -1,6 +1,7 @@
 import fs from "fs";
 import yaml from "js-yaml";
 import path from "path";
+import { logger } from "./logging";
 import type {
   EndpointDefinition,
   ExpectedResponse,
@@ -10,6 +11,8 @@ import type {
   ScannerXConfig,
 } from "./types";
 
+const parserLog = logger.child({ scope: "parser" });
+
 /**
  * Loads and parses the OpenAPI YAML/JSON spec.
  * Resolves $ref references inline.
@@ -18,7 +21,12 @@ export function loadSpec(filePath: string): OpenAPISpec {
   const abs = path.resolve(filePath);
   const raw = fs.readFileSync(abs, "utf8");
   const spec = yaml.load(raw) as OpenAPISpec;
-  return resolveRefs(spec, spec) as OpenAPISpec;
+  const resolved = resolveRefs(spec, spec) as OpenAPISpec;
+  parserLog.info(
+    { file: path.basename(abs), title: resolved.info?.title },
+    "spec loaded",
+  );
+  return resolved;
 }
 
 /**
@@ -76,6 +84,7 @@ export function applyBaseUrlOverride(
   const cur =
     (spec["x-scanner"] as Record<string, unknown> | undefined) || {};
   spec["x-scanner"] = { ...cur, baseUrl: t } as ScannerXConfig;
+  parserLog.debug({ baseUrl: t }, "base URL override merged into spec");
 }
 
 /**
@@ -142,6 +151,7 @@ export function extractEndpoints(spec: OpenAPISpec): EndpointDefinition[] {
     }
   }
 
+  parserLog.debug({ endpointCount: endpoints.length }, "endpoints extracted");
   return endpoints;
 }
 
