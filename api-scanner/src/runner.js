@@ -1,6 +1,7 @@
 const axios = require("axios");
 const { runStandardTests } = require("./analyzers/standard-tests");
 const { analyzeForeignKeys, detectNPlusOne } = require("./analyzers/fk-analyzer");
+const { posthog, distinctId } = require("./posthog-client");
 
 /**
  * Runs all tests against all endpoints in the spec.
@@ -26,6 +27,22 @@ async function runTests(endpoints, spec, options = {}) {
       if (t.status === "pass") passed++;
       else if (t.status === "fail") failed++;
       else if (t.status === "warn") warned++;
+    }
+
+    if (result.status === "fail") {
+      posthog.capture({
+        distinctId,
+        event: "endpoint test failed",
+        properties: {
+          method: endpoint.method,
+          path: endpoint.pathTemplate,
+          url: endpoint.url,
+          operation_id: endpoint.operationId,
+          fail_count: result.counts.fail,
+          warn_count: result.counts.warn,
+          tags: endpoint.tags,
+        },
+      });
     }
 
     if (options.stopOnFirstFail && failed > 0) break;

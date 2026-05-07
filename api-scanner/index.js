@@ -11,6 +11,7 @@ const { runTests } = require("./src/runner");
 const { printReport } = require("./src/reporters/terminal");
 const { exportPostman } = require("./src/exporters/postman");
 const { exportInsomnia } = require("./src/exporters/insomnia");
+const { posthog, distinctId } = require("./src/posthog-client");
 
 const program = new Command();
 
@@ -29,6 +30,19 @@ program
   .action(async (specPath, options) => {
     console.log(chalk.bold("\n🔍 api-scanner\n"));
 
+    posthog.capture({
+      distinctId,
+      event: "scan started",
+      properties: {
+        spec_path: specPath,
+        format: options.format,
+        tag: options.tag || null,
+        timeout: parseInt(options.timeout),
+        stop_on_fail: options.stopOnFail || false,
+        skip_export: options.skipExport || false,
+      },
+    });
+
     // ── Load & parse spec ──────────────────────────────────────────────────
     const loadSpinner = ora("Loading spec...").start();
     let spec, endpoints;
@@ -36,8 +50,27 @@ program
       spec = loadSpec(specPath);
       endpoints = extractEndpoints(spec);
       loadSpinner.succeed(`Loaded: ${chalk.bold(spec.info?.title || specPath)} (${endpoints.length} endpoints)`);
+      posthog.capture({
+        distinctId,
+        event: "spec loaded",
+        properties: {
+          spec_title: spec.info?.title || specPath,
+          spec_version: spec.info?.version || null,
+          endpoint_count: endpoints.length,
+        },
+      });
     } catch (err) {
       loadSpinner.fail(`Failed to load spec: ${err.message}`);
+      posthog.captureException(err, distinctId);
+      posthog.capture({
+        distinctId,
+        event: "spec load failed",
+        properties: {
+          spec_path: specPath,
+          error: err.message,
+        },
+      });
+      await posthog.shutdown();
       process.exit(1);
     }
 
@@ -50,6 +83,7 @@ program
 
     if (filtered.length === 0) {
       console.log(chalk.yellow("No endpoints to test."));
+      await posthog.shutdown();
       process.exit(0);
     }
 
@@ -66,8 +100,22 @@ program
       report = await runTests(filtered, spec, testOptions);
     } catch (err) {
       console.error(chalk.red(`Test runner error: ${err.message}`));
+      posthog.captureException(err, distinctId);
+      await posthog.shutdown();
       process.exit(1);
     }
+
+    posthog.capture({
+      distinctId,
+      event: "scan completed",
+      properties: {
+        spec_title: report.meta.specTitle,
+        total_endpoints: report.meta.totalEndpoints,
+        passed: report.meta.passed,
+        failed: report.meta.failed,
+        warned: report.meta.warned,
+      },
+    });
 
     // ── Print report ───────────────────────────────────────────────────────
     printReport(report);
@@ -107,9 +155,20 @@ program
         console.log(`   ${chalk.green("✓")} ${exp.name}: ${chalk.cyan(exp.path)}`);
       }
       console.log();
+
+      posthog.capture({
+        distinctId,
+        event: "export completed",
+        properties: {
+          format: options.format,
+          export_count: exports.length,
+          output_dir: outputDir,
+        },
+      });
     }
 
     // Exit code based on failures
+    await posthog.shutdown();
     process.exit(report.meta.failed > 0 ? 1 : 0);
   });
 
