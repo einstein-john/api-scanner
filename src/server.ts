@@ -19,6 +19,7 @@ import { filterToSingleEndpoint } from "./endpoint-selection";
 import { applyEndpointOverrides } from "./endpoint-overrides";
 import { loadSpec, extractEndpoints, applyBaseUrlOverride } from "./parser";
 import { logger } from "./logging";
+import { posthog, distinctId } from "./posthog-client";
 import pinoHttp from "pino-http";
 import {
   applyResolvedAuth,
@@ -119,9 +120,21 @@ app.post(
         },
         "spec parsed",
       );
+      posthog.capture({
+        distinctId,
+        event: "spec parsed",
+        properties: {
+          spec_title: spec.info?.title || "Unknown API",
+          spec_version: spec.info?.version || "?",
+          endpoint_count: endpoints.length,
+          tag_count: tags.length,
+          base_url_override: Boolean(baseUrlField),
+        },
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       parseLog.error({ err: msg }, "parse failed");
+      posthog.captureException(err, distinctId, { route: "/api/parse" });
       res.status(400).json({ error: msg });
     }
   },
@@ -235,6 +248,15 @@ app.post(
         },
         "scan started",
       );
+      posthog.capture({
+        distinctId,
+        event: "scan started",
+        properties: {
+          spec_title: spec.info?.title || "Unknown API",
+          endpoint_count: endpoints.length,
+          tag_filter: typeof tagOpt === "string" ? tagOpt : undefined,
+        },
+      });
 
       const config = (spec["x-scanner"] as ScannerXConfig | undefined) || {};
       const auth = resolveRequestAuth(config.auth, options.auth);
@@ -323,9 +345,23 @@ app.post(
         },
         "scan finished",
       );
+      posthog.capture({
+        distinctId,
+        event: "scan completed",
+        properties: {
+          spec_title: report.meta.specTitle,
+          spec_version: report.meta.specVersion,
+          total_endpoints: report.meta.totalEndpoints,
+          passed: report.meta.passed,
+          failed: report.meta.failed,
+          warned: report.meta.warned,
+          had_failures: report.meta.failed > 0,
+        },
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       scanLog.error({ err: msg }, "scan failed");
+      posthog.captureException(err, distinctId, { route: "/api/scan" });
       send("error", { message: msg });
     }
 
@@ -408,6 +444,16 @@ app.get("/api/export/:format", (req: Request, res: Response): void => {
     format === "llm-json"
   ) {
     exportLog.info({ format }, "export served");
+    posthog.capture({
+      distinctId,
+      event: "export downloaded",
+      properties: {
+        format,
+        spec_title: report.meta.specTitle,
+        total_endpoints: report.meta.totalEndpoints,
+        failed: report.meta.failed,
+      },
+    });
   }
 });
 

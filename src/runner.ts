@@ -11,6 +11,7 @@ import {
   type ResolvedRequestAuth,
 } from "./request-auth";
 import { logger } from "./logging";
+import { posthog, distinctId } from "./posthog-client";
 import type {
   AuthContextSummary,
   EndpointDefinition,
@@ -70,6 +71,22 @@ export async function runTests(
       if (t.status === "pass") passed++;
       else if (t.status === "fail") failed++;
       else if (t.status === "warn") warned++;
+    }
+
+    if (result.status === "fail") {
+      posthog.capture({
+        distinctId,
+        event: "endpoint test failed",
+        properties: {
+          method: endpoint.method,
+          path: endpoint.pathTemplate,
+          url: endpoint.url,
+          operation_id: endpoint.operationId,
+          fail_count: result.counts.fail,
+          warn_count: result.counts.warn,
+          tags: endpoint.tags,
+        },
+      });
     }
 
     if (options.stopOnFirstFail && failed > 0) break;

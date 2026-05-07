@@ -13,6 +13,7 @@ import {
 import { exportPostman } from "./exporters/postman";
 import { filterToSingleEndpoint } from "./endpoint-selection";
 import { logger } from "./logging";
+import { posthog, distinctId } from "./posthog-client";
 import { loadSpec, extractEndpoints } from "./parser";
 import type { EndpointOverridesMap } from "./types";
 import { printReport } from "./reporters/terminal";
@@ -114,6 +115,18 @@ program
       "cli scan starting",
     );
 
+    posthog.capture({
+      distinctId,
+      event: "cli scan started",
+      properties: {
+        tag_filter: options.tag || undefined,
+        format: options.format,
+        stop_on_fail: options.stopOnFail || false,
+        has_bearer: Boolean(options.bearer?.trim()),
+        has_api_key: Boolean(options.apiKey?.trim()),
+      },
+    });
+
     const loadSpinner = ora("Loading spec...").start();
     let spec: ReturnType<typeof loadSpec>;
     let endpoints: ReturnType<typeof extractEndpoints>;
@@ -135,6 +148,13 @@ program
       const msg = err instanceof Error ? err.message : String(err);
       loadSpinner.fail(`Failed to load spec: ${msg}`);
       cliLog.error({ err: msg, specPath: resolvedSpecPath }, "cli spec load failed");
+      posthog.capture({
+        distinctId,
+        event: "cli spec parse failed",
+        properties: { spec_path: resolvedSpecPath, error: msg },
+      });
+      posthog.captureException(err, distinctId, { spec_path: resolvedSpecPath });
+      await posthog.shutdown();
       process.exit(1);
     }
 
@@ -333,7 +353,23 @@ program
     }
 
     const exitCode = report.meta.failed > 0 ? 1 : 0;
+    posthog.capture({
+      distinctId,
+      event: "cli scan completed",
+      properties: {
+        spec_title: report.meta.specTitle,
+        spec_version: report.meta.specVersion,
+        total_endpoints: report.meta.totalEndpoints,
+        passed: report.meta.passed,
+        failed: report.meta.failed,
+        warned: report.meta.warned,
+        had_failures: report.meta.failed > 0,
+        format: options.format,
+        skip_export: options.skipExport || false,
+      },
+    });
     cliLog.info({ exitCode }, "cli exiting");
+    await posthog.shutdown();
     process.exit(exitCode);
   });
 

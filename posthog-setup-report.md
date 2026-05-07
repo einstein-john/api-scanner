@@ -1,39 +1,29 @@
 <wizard-report>
 # PostHog post-wizard report
 
-The wizard has completed a deep integration of PostHog analytics into `api-scanner`, a Node.js CLI tool for scanning OpenAPI specs and testing endpoints.
-
-## What was changed
-
-- **`api-scanner/src/posthog-client.js`** (new) — PostHog client helper. Initializes `posthog-node` with `flushAt: 1` and `flushInterval: 0` (required for short-lived CLI processes), reads credentials from environment variables, and exports a shared `distinctId` derived from `os.hostname()`.
-- **`api-scanner/index.js`** — Added six event captures covering the full scan lifecycle: scan started, spec loaded, spec load failed (with exception capture), scan completed, and export completed. Added `await posthog.shutdown()` before every `process.exit()` to flush events before the process ends.
-- **`api-scanner/src/runner.js`** — Added `endpoint test failed` capture for every endpoint that produces a failing test result, including method, path, operation ID, and counts.
-- **`api-scanner/.env`** — Created with `POSTHOG_API_KEY` and `POSTHOG_HOST` environment variables.
-- **`api-scanner/package.json`** — `posthog-node` added as a dependency.
-
-> **Loading `.env`:** With Node.js 20+, run the CLI as `node --env-file=.env index.js <spec>` to load the env file automatically.
-
-## Events
+The wizard has completed a deep integration of PostHog analytics into the api-scanner project. The `posthog-node` SDK was installed and a shared client module (`src/posthog-client.ts`) was created using environment variables for the API key and host. Eight events were added across the three main entry points of the application — the Express HTTP server (`src/server.ts`), the core test runner (`src/runner.ts`), and the CLI (`src/cli.ts`). Exception capture (`posthog.captureException`) was added to key error handlers in the server and CLI. The CLI calls `posthog.shutdown()` before each `process.exit()` to ensure events are flushed from this short-lived process. The server retains the default batching behavior, appropriate for a long-running process.
 
 | Event | Description | File |
-|-------|-------------|------|
-| `scan started` | Fired when the user begins a scan; includes spec path, format, tag, timeout, and flags | `api-scanner/index.js` |
-| `spec loaded` | Fired after the OpenAPI spec is successfully parsed; includes title, version, and endpoint count | `api-scanner/index.js` |
-| `spec load failed` | Fired (with exception capture) when the spec file fails to load or parse | `api-scanner/index.js` |
-| `scan completed` | Fired after all endpoint tests finish; includes passed, failed, and warned counts | `api-scanner/index.js` |
-| `export completed` | Fired after scan results are exported to files; includes format and export count | `api-scanner/index.js` |
-| `endpoint test failed` | Fired for each endpoint that fails; includes method, path, operation ID, and fail/warn counts | `api-scanner/src/runner.js` |
+|---|---|---|
+| `spec parsed` | API spec successfully uploaded and parsed via the web UI | `src/server.ts` |
+| `scan started` | Scan initiated via the web UI | `src/server.ts` |
+| `scan completed` | Scan finished (with pass/fail/warn counts and `had_failures` flag) | `src/server.ts` |
+| `export downloaded` | User downloaded a scan export (with `format` property) | `src/server.ts` |
+| `endpoint test failed` | Individual endpoint produced at least one failing test | `src/runner.ts` |
+| `cli scan started` | CLI user initiated a scan | `src/cli.ts` |
+| `cli scan completed` | CLI scan finished (with summary counts) | `src/cli.ts` |
+| `cli spec parse failed` | CLI failed to load or parse the provided spec file | `src/cli.ts` |
 
 ## Next steps
 
 We've built some insights and a dashboard for you to keep an eye on user behavior, based on the events we just instrumented:
 
-- [Analytics basics dashboard](/dashboard/667312)
-- [Daily scans](/insights/mIiJ48PJ) — scan volume over time
-- [Scan success vs failures](/insights/l9RaK8O7) — completed scans vs spec load failures side by side
-- [Endpoint test failures over time](/insights/HsmU49zU) — how many endpoint tests fail per day
-- [Export format usage](/insights/8pNkG60T) — which export formats (postman, insomnia, all) are used most
-- [Spec load error rate](/insights/DXZCvZ2D) — percentage of scans that fail at spec parsing
+- [Analytics basics dashboard](/dashboard/667345)
+- [Scan Volume Over Time](/insights/JALS6OyW) — server and CLI scans per day
+- [Spec Parse → Scan → Export Funnel](/insights/ph390aXz) — conversion funnel from parsing a spec to downloading an export
+- [Endpoint Test Failures Over Time](/insights/m6RgTYdc) — daily count of endpoint failures, a key API health signal
+- [Scans With Failures](/insights/YKErmDrx) — scans with at least one failing endpoint vs all scans
+- [Export Downloads by Format](/insights/evJF6vss) — which export formats (postman, insomnia, report, llm) users prefer
 
 ### Agent skill
 
