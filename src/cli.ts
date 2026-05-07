@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import "./load-env";
 import { Command, type OptionValues } from "commander";
 import fs from "fs";
 import path from "path";

@@ -1,3 +1,4 @@
+import "./load-env";
 import axios, { type AxiosRequestConfig } from "axios";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
